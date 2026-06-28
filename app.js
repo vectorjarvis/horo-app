@@ -1,8 +1,11 @@
-const GOOGLE_APPS_SCRIPT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyvyNPc_c9OaCkiH4y3wLH2bNVYLPy3ypJJhqzFu9z_XI_OU-AK7EGF-auXwg-bW3R1/exec";
+const GOOGLE_APPS_SCRIPT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycby4r9qc3uptZ4rB8IJqsjTIiz14QalZml2f01-QurBbbXU7Ly8Dr7hubHynT_HUogfM/exec";
+const ENABLE_FUNNEL_ANALYTICS = true; // Set to true only after redeploying google-apps-script.js with Horo Sessions support.
 
 const STORAGE_KEYS = {
   pending: "horo_pending_submissions",
   successful: "horo_successful_submission_ids",
+  pendingEvents: "horo_pending_events",
+  sessionId: "horo_session_id",
 };
 
 const DATE_REQUIRED_BIRTHDAY_STATUSES = ["Yes, I know the exact date", "I know the adoption/gotcha day"];
@@ -111,11 +114,6 @@ const quizQuestions = [
     question: "If the app was genuinely fun and personalized, what would feel reasonable?",
     options: ["Free only", "$1.99/month", "$4.99/month", "$9.99/month", "One-time purchase", "Not sure yet"],
   },
-  {
-    key: "email",
-    type: "email",
-    question: "Where should we send your pet’s full cosmic profile and early iOS invite?",
-  },
 ];
 
 const resultTypes = {
@@ -156,6 +154,10 @@ let answers = {};
 let resultType = "";
 let hasStarted = false;
 let submissionId = "";
+let quizCompleted = false;
+let leadSubmitted = false;
+let maxScrollDepth = 0;
+const sessionId = getOrCreateSessionId();
 
 const stage = document.querySelector("#quiz-stage");
 const controls = document.querySelector("#quiz-controls");
@@ -168,9 +170,11 @@ const backButton = document.querySelector("#back-button");
 const nextButton = document.querySelector("#next-button");
 
 document.addEventListener("DOMContentLoaded", () => {
-  trackEvent("page_view", getAttribution());
+  trackEvent("page_view", { event_category: "acquisition", event_step: "landing" });
   renderIntro();
   retryPendingSubmissions();
+  retryPendingEvents();
+  bindGlobalAnalyticsEvents();
   document.querySelectorAll("[data-action='start-quiz']").forEach((link) => {
     link.addEventListener("click", () => {
       if (!hasStarted) {
@@ -205,8 +209,36 @@ nextButton.addEventListener("click", () => {
 
   resultType = calculateResultType();
   trackEvent("quiz_completed", { result_type: resultType });
+  quizCompleted = true;
   showResult();
 });
+
+window.addEventListener("pagehide", () => {
+  if (hasStarted && !leadSubmitted) {
+    trackEvent("quiz_abandoned", {
+      event_category: "funnel",
+      event_step: quizCompleted ? "result_email_capture" : "quiz_questions",
+      question_index: Math.min(currentStep + 1, getVisibleQuestions().length),
+      question_count: getVisibleQuestions().length,
+      result_type: resultType,
+    });
+  }
+});
+
+window.addEventListener("scroll", () => {
+  const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+  if (scrollable <= 0) return;
+  const depth = Math.min(100, Math.round((window.scrollY / scrollable) * 100));
+  const milestone = [25, 50, 75, 90].find((value) => depth >= value && maxScrollDepth < value);
+  if (milestone) {
+    maxScrollDepth = milestone;
+    trackEvent("scroll_depth", {
+      event_category: "engagement",
+      event_step: `${milestone}%`,
+      event_value: milestone,
+    });
+  }
+}, { passive: true });
 
 function startQuiz() {
   hasStarted = true;
@@ -218,7 +250,9 @@ function startQuiz() {
     pet_birth_date: "",
   };
   submissionId = createSubmissionId();
-  trackEvent("quiz_started");
+  quizCompleted = false;
+  leadSubmitted = false;
+  trackEvent("quiz_started", { event_category: "funnel", event_step: "quiz_start" });
   renderQuestion();
 }
 
@@ -227,9 +261,9 @@ function renderIntro() {
   controls.hidden = true;
   stage.innerHTML = `
     <div class="quiz-panel">
-      <span class="result-badge">2 minute cosmic audit</span>
-      <h3>Reveal your pet’s cosmic type.</h3>
-      <p class="subtitle">Tell us about the tiny personality living rent-free in your home. We’ll show a teaser result, then invite you to the private iOS waitlist.</p>
+      <span class="result-badge">60-second cosmic diagnosis</span>
+      <h3>What is your pet’s cosmic personality type?</h3>
+      <p class="subtitle">Answer 10 tiny questions. Get your pet’s cosmic type. Join the private iOS beta to unlock the full reading.</p>
       <button class="button button-primary" type="button" id="start-button">Start the Quiz</button>
     </div>
   `;
@@ -244,6 +278,13 @@ function renderQuestion() {
   backButton.disabled = currentStep === 0;
   nextButton.textContent = currentStep === visibleQuestions.length - 1 ? "Reveal Result" : "Next";
   updateProgress(visibleQuestions.length);
+  trackEvent("question_viewed", {
+    event_category: "funnel",
+    event_step: "question",
+    question_key: question.key,
+    question_index: currentStep + 1,
+    question_count: visibleQuestions.length,
+  });
 
   const subtitle = question.subtitle ? `<p class="subtitle">${escapeHtml(question.subtitle)}</p>` : "";
   stage.innerHTML = `
@@ -418,38 +459,90 @@ function showResult() {
   controls.hidden = true;
   clearError();
   const result = resultTypes[resultType];
-  trackEvent("result_viewed", { result_type: resultType });
+  const petName = answers.pet_name || "Your pet";
+  trackEvent("result_viewed", {
+    event_category: "funnel",
+    event_step: "result_view",
+    result_type: resultType,
+  });
   stage.innerHTML = `
-    <div class="quiz-panel">
-      <span class="result-badge">Result: ${escapeHtml(resultType)}</span>
-      <h3>${escapeHtml(answers.pet_name || "Your pet")} is giving ${escapeHtml(resultType)}.</h3>
+    <div class="quiz-panel result-unlock-card">
+      <span class="result-badge">Your pet’s result: ${escapeHtml(resultType)}</span>
+      <h3>${escapeHtml(petName)} is giving ${escapeHtml(resultType)}.</h3>
       <p class="subtitle">${escapeHtml(result.description)}</p>
+      <p class="unlock-heading">The full Horo profile includes:</p>
       <ul class="result-list">
-        ${result.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("")}
+        <li>Your pet’s cosmic personality reading</li>
+        <li>Daily horoscope preview</li>
+        <li>Pet-parent compatibility</li>
+        <li>Moon mood forecast</li>
       </ul>
-      <p class="subtitle">Join the private iOS waitlist to receive the full pet cosmic profile and hear when Horo launches.</p>
-      <button class="button button-primary" type="button" id="submit-button">Join Waitlist</button>
+      <div class="teaser-notes">
+        ${result.bullets.map((bullet) => `<span>${escapeHtml(bullet)}</span>`).join("")}
+      </div>
+      <div class="unlock-form" aria-label="Join the Horo waitlist">
+        <p class="privacy-note">Join the private iOS waitlist to unlock the full profile when Horo launches. We’ll only email you about Horo early access and launch updates. No spam. Unsubscribe anytime.</p>
+        <label class="input-label">
+          Email address
+          <input class="text-input" type="email" inputmode="email" autocomplete="email" value="${escapeAttr(answers.email || "")}" placeholder="you@example.com" data-field="email">
+        </label>
+        <label class="input-label">
+          Instagram handle, optional
+          <input class="text-input" type="text" autocomplete="off" value="${escapeAttr(answers.instagram_handle || "")}" placeholder="@yourhandle" data-field="instagram_handle">
+        </label>
+        <label class="consent-row">
+          <input type="checkbox" data-field="marketing_consent" ${answers.marketing_consent ? "checked" : ""}>
+          <span>I agree to receive updates about Horo’s launch and early access. I understand I can unsubscribe later.</span>
+        </label>
+        <button class="button button-primary" type="button" id="submit-button">Join the Horo Waitlist</button>
+      </div>
     </div>
   `;
 
+  bindEmailCaptureEvents();
   document.querySelector("#submit-button").addEventListener("click", submitLead);
 }
 
 async function submitLead() {
   const submitButton = document.querySelector("#submit-button");
+  clearError();
+  if (!validateEmailCapture()) {
+    return;
+  }
+
   submitButton.disabled = true;
   submitButton.textContent = "Sending to the stars...";
-  trackEvent("email_submitted", { email: answers.email, result_type: resultType });
+  trackEvent("email_submitted", {
+    event_category: "conversion",
+    event_step: "waitlist_submit_attempt",
+    email_present: Boolean(answers.email),
+    instagram_present: Boolean(answers.instagram_handle),
+    result_type: resultType,
+  });
 
   const payload = buildPayload();
   try {
     await submitPayload(payload);
     markSubmissionSuccessful(payload.submission_id);
-    trackEvent("submission_success", { submission_id: payload.submission_id, lead_score: payload.lead_score });
+    leadSubmitted = true;
+    trackEvent("submission_success", {
+      event_category: "conversion",
+      event_step: "waitlist_success",
+      submission_id: payload.submission_id,
+      lead_score: payload.lead_score,
+      lead_quality: payload.lead_quality,
+      result_type: resultType,
+    });
     showSuccess();
   } catch (error) {
     queuePendingSubmission(payload);
-    trackEvent("submission_error", { message: error.message, submission_id: payload.submission_id });
+    trackEvent("submission_error", {
+      event_category: "conversion",
+      event_step: "waitlist_error",
+      message: error.message,
+      submission_id: payload.submission_id,
+      result_type: resultType,
+    });
     showError("We saved this locally, but the waitlist endpoint is not reachable yet. Add your Google Apps Script URL in app.js and refresh to retry.");
     submitButton.disabled = false;
     submitButton.textContent = "Try Again";
@@ -564,29 +657,47 @@ function calculateLeadQuality(score) {
 }
 
 function showSuccess() {
+  const shareText = getResultShareText();
   stage.innerHTML = `
     <div class="quiz-panel">
       <span class="result-badge">Private waitlist confirmed</span>
       <h3>You’re on the Horo waitlist.</h3>
       <p class="subtitle">Your pet’s cosmic file has been marked as extremely suspicious and spiritually important.</p>
+      <div class="share-card" aria-label="Shareable result copy">${escapeHtml(shareText)}</div>
       <p class="subtitle">We’ll email you when early access opens.</p>
       <div class="success-actions">
-        <button class="button button-primary" type="button" id="share-button">Share with another pet parent</button>
+        <button class="button button-primary" type="button" id="copy-result-button">Copy My Result</button>
+        <button class="button button-ghost" type="button" id="share-button">Share With Another Pet Parent</button>
         <a class="button button-ghost" href="https://www.instagram.com/" target="_blank" rel="noopener">Follow us on Instagram</a>
       </div>
     </div>
   `;
 
+  document.querySelector("#copy-result-button").addEventListener("click", async () => {
+    await copyText(`${shareText} ${window.location.href}`);
+    trackEvent("result_copied", {
+      event_category: "sharing",
+      event_step: "copy_result",
+      result_type: resultType,
+    });
+    document.querySelector("#copy-result-button").textContent = "Copied";
+  });
+
   document.querySelector("#share-button").addEventListener("click", async () => {
+    trackEvent("share_clicked", {
+      event_category: "sharing",
+      event_step: "share_result",
+      result_type: resultType,
+    });
     const shareData = {
       title: "Horo",
-      text: "I just found my pet’s cosmic personality type. Horo is coming soon to iOS.",
+      text: shareText,
       url: window.location.href,
     };
     if (navigator.share) {
       await navigator.share(shareData).catch(() => {});
     } else {
-      await navigator.clipboard?.writeText(window.location.href);
+      await copyText(`${shareText} ${window.location.href}`);
       document.querySelector("#share-button").textContent = "Link Copied";
     }
   });
@@ -607,7 +718,217 @@ function getAttribution() {
 }
 
 function trackEvent(eventName, payload = {}) {
-  console.log(`[Horo event] ${eventName}`, payload);
+  console.log("[Horo event]", eventName, payload);
+  queueAnalyticsEvent(buildAnalyticsPayload(eventName, payload));
+}
+
+function bindGlobalAnalyticsEvents() {
+  document.querySelectorAll("a[href]").forEach((link) => {
+    link.addEventListener("click", () => {
+      const href = link.getAttribute("href") || "";
+      const text = link.textContent.trim();
+      const category = href.startsWith("#") ? "navigation" : "outbound";
+      trackEvent("link_clicked", {
+        event_category: category,
+        event_step: href,
+        event_value: text,
+      });
+      if (link.dataset.action === "start-quiz") {
+        trackEvent("primary_cta_clicked", {
+          event_category: "funnel",
+          event_step: "hero_cta",
+          event_value: text,
+        });
+      }
+    });
+  });
+
+  document.querySelectorAll(".legal-links details").forEach((details) => {
+    details.addEventListener("toggle", () => {
+      if (details.open) {
+        trackEvent("legal_section_opened", {
+          event_category: "trust",
+          event_step: details.id,
+          event_value: details.querySelector("summary")?.textContent || details.id,
+        });
+      }
+    });
+  });
+}
+
+function buildAnalyticsPayload(eventName, payload = {}) {
+  const attribution = getAttribution();
+  const leadScore = calculateLeadScore();
+  const eventPayload = {
+    ...payload,
+    answers_snapshot: sanitizeAnswersForAnalytics(),
+  };
+  return {
+    record_type: "event",
+    event_id: createSubmissionId(),
+    session_id: sessionId,
+    submission_id: submissionId || "",
+    created_at: new Date().toISOString(),
+    app_name: "Horo",
+    source: "GitHub Pages landing page",
+    event_name: eventName,
+    event_category: payload.event_category || "",
+    event_step: payload.event_step || "",
+    event_value: stringifyEventValue(payload.event_value || payload.value || ""),
+    question_key: payload.question_key || payload.key || "",
+    question_index: payload.question_index || "",
+    question_count: payload.question_count || "",
+    result_type: payload.result_type || resultType || "",
+    lead_score: leadScore,
+    lead_quality: calculateLeadQuality(leadScore),
+    email_present: Boolean(answers.email),
+    instagram_present: Boolean(answers.instagram_handle),
+    pet_type: answers.pet_type || "",
+    interest_level: answers.interest_level || "",
+    willingness_to_pay: answers.willingness_to_pay || "",
+    ...attribution,
+    page_path: window.location.pathname + window.location.hash,
+    page_title: document.title,
+    viewport_width: window.innerWidth,
+    viewport_height: window.innerHeight,
+    device_type: window.innerWidth < 768 ? "mobile" : "desktop",
+    event_payload_json: JSON.stringify(eventPayload),
+  };
+}
+
+function queueAnalyticsEvent(payload) {
+  if (!GOOGLE_APPS_SCRIPT_WEB_APP_URL || GOOGLE_APPS_SCRIPT_WEB_APP_URL.includes("PASTE_YOUR")) {
+    return;
+  }
+  if (!ENABLE_FUNNEL_ANALYTICS) {
+    return;
+  }
+
+  const pending = getPendingEvents();
+  pending.push(payload);
+  localStorage.setItem(STORAGE_KEYS.pendingEvents, JSON.stringify(pending.slice(-100)));
+  sendAnalyticsEvent(payload).then(() => {
+    removePendingEvent(payload.event_id);
+  }).catch(() => {});
+}
+
+async function sendAnalyticsEvent(payload) {
+  await fetch(GOOGLE_APPS_SCRIPT_WEB_APP_URL, {
+    method: "POST",
+    mode: "no-cors",
+    keepalive: true,
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload),
+  });
+}
+
+async function retryPendingEvents() {
+  if (!GOOGLE_APPS_SCRIPT_WEB_APP_URL || GOOGLE_APPS_SCRIPT_WEB_APP_URL.includes("PASTE_YOUR")) {
+    return;
+  }
+  if (!ENABLE_FUNNEL_ANALYTICS) {
+    return;
+  }
+
+  const pending = getPendingEvents();
+  if (!pending.length) return;
+  for (const payload of pending.slice(0, 20)) {
+    try {
+      await sendAnalyticsEvent(payload);
+      removePendingEvent(payload.event_id);
+    } catch (error) {
+      break;
+    }
+  }
+}
+
+function getPendingEvents() {
+  return safeParse(localStorage.getItem(STORAGE_KEYS.pendingEvents), []);
+}
+
+function removePendingEvent(eventId) {
+  const remaining = getPendingEvents().filter((event) => event.event_id !== eventId);
+  localStorage.setItem(STORAGE_KEYS.pendingEvents, JSON.stringify(remaining));
+}
+
+function getOrCreateSessionId() {
+  const existing = localStorage.getItem(STORAGE_KEYS.sessionId);
+  if (existing) return existing;
+  const id = createSubmissionId();
+  localStorage.setItem(STORAGE_KEYS.sessionId, id);
+  return id;
+}
+
+function sanitizeAnswersForAnalytics() {
+  const { email, instagram_handle: instagramHandle, ...safeAnswers } = answers;
+  return {
+    ...safeAnswers,
+    email_present: Boolean(email),
+    instagram_present: Boolean(instagramHandle),
+  };
+}
+
+function stringifyEventValue(value) {
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "object" && value !== null) return JSON.stringify(value);
+  return value;
+}
+
+function bindEmailCaptureEvents() {
+  stage.querySelectorAll("[data-field]").forEach((input) => {
+    input.addEventListener("input", () => {
+      if (input.type === "checkbox") {
+        answers[input.dataset.field] = input.checked;
+      } else {
+        answers[input.dataset.field] = input.value.trim();
+      }
+    });
+  });
+}
+
+function validateEmailCapture() {
+  if (!isValidEmail(answers.email || "")) {
+    showError("Enter a valid email address for the private iOS waitlist.");
+    return false;
+  }
+  if (!answers.marketing_consent) {
+    showError("Please agree to receive Horo launch and early access updates.");
+    return false;
+  }
+  return true;
+}
+
+function getResultShareText() {
+  const petType = answers.pet_type || "";
+  if (resultType === "Chaos Comet") {
+    return "My pet is a Chaos Comet and honestly that explains everything.";
+  }
+  if (resultType === "Mystery Void" && petType.includes("Cat")) {
+    return "My cat is a Mystery Void. The stars confirmed what I already knew.";
+  }
+  if (resultType === "Mystery Void") {
+    return "My pet is a Mystery Void. The stars confirmed what I already knew.";
+  }
+  if (resultType === "Royal Leo Paw") {
+    return "My pet is a Royal Leo Paw. Main character behavior officially confirmed.";
+  }
+  return `My pet is a ${resultType}. Horo said what needed to be said.`;
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }
 
 async function retryPendingSubmissions() {
