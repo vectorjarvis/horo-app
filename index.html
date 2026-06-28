@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Horo is the astrology app for your pet's chaotic little soul. Join the private iOS waitlist.">
+    <title>Horo | Pet Astrology Coming Soon</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="site-header" aria-label="Horo landing page header">
+      <a class="brand" href="#top" aria-label="Horo home">
+        <span class="brand-mark">✦</span>
+        <span>Horo</span>
+      </a>
+      <nav class="header-actions" aria-label="Primary navigation">
+        <a href="#features">Features</a>
+        <a href="#quiz">Quiz</a>
+        <a class="nav-button" href="#quiz">Join Waitlist</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero section-band">
+        <div class="stars" aria-hidden="true"></div>
+        <div class="hero-copy">
+          <p class="eyebrow">Coming soon to iOS</p>
+          <h1>Your pet has a zodiac sign. Let’s make it everyone’s problem.</h1>
+          <p class="hero-subhead">
+            Horo gives your dog or cat playful horoscopes, personality readings, cosmic compatibility,
+            and daily mood forecasts, made for pet parents who know their animal is basically a tiny mystical roommate.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#quiz" data-action="start-quiz">Reveal My Pet’s Cosmic Type</a>
+            <a class="button button-secondary" href="#quiz">Join the iOS waitlist</a>
+          </div>
+          <p class="trust-line">For dogs, cats, and emotionally complicated fur babies.</p>
+        </div>
+        <div class="hero-visual" aria-label="Decorative Horo app preview">
+          <div class="phone-shell">
+            <div class="phone-screen">
+              <div class="moon">☾</div>
+              <p class="screen-kicker">Today’s Reading</p>
+              <h2>Chaos Comet</h2>
+              <p>Your pet’s snack energy is peaking under an extremely suspicious moon.</p>
+              <div class="mini-chart">
+                <span>Zoomies</span>
+                <div><i style="width: 92%"></i></div>
+                <span>Cuddles</span>
+                <div><i style="width: 66%"></i></div>
+                <span>Drama</span>
+                <div><i style="width: 81%"></i></div>
+              </div>
+            </div>
+          </div>
+          <div class="orbit orbit-one">♌</div>
+          <div class="orbit orbit-two">✧</div>
+          <div class="orbit orbit-three">♡</div>
+        </div>
+      </section>
+
+      <section class="teaser-strip" aria-label="Who Horo is for">
+        <p>For the dog moms who already know their golden retriever is a Leo.</p>
+        <p>For the cat moms who suspect their cat is emotionally manipulating them.</p>
+        <p>For anyone who has ever said: “she’s acting weird because Mercury is in retrograde.”</p>
+      </section>
+
+      <section id="features" class="features section-wrap">
+        <div class="section-heading">
+          <p class="eyebrow">Cosmic pet content, daily</p>
+          <h2>Because your pet’s behavior is too weird to be random.</h2>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <span class="feature-icon">☀</span>
+            <h3>Daily Pet Horoscope</h3>
+            <p>A daily cosmic forecast for your dog or cat’s mood, mischief, and snack energy.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-icon">✦</span>
+            <h3>Pet Personality Reading</h3>
+            <p>Discover if your pet is a Cuddle Mystic, Chaos Goblin, Drama Moon, or Snack Prophet.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-icon">♡</span>
+            <h3>Compatibility</h3>
+            <p>See how your zodiac energy matches your pet’s emotional universe.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-icon">☾</span>
+            <h3>Moon Mood Alerts</h3>
+            <p>Get playful alerts when your pet’s cosmic chaos may be peaking.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="quiz" class="quiz-section section-band">
+        <div class="quiz-shell">
+          <div class="quiz-intro">
+            <p class="eyebrow">Private waitlist quiz</p>
+            <h2>What is your pet’s cosmic personality type?</h2>
+            <p>Answer a few questions and join the private iOS waitlist for Horo.</p>
+          </div>
+
+          <div class="quiz-card" aria-live="polite">
+            <div id="quiz-progress" class="progress-wrap" hidden>
+              <div class="progress-meta">
+                <span id="progress-label">Question 1 of 10</span>
+                <span id="progress-percent">10%</span>
+              </div>
+              <div class="progress-track"><div id="progress-bar"></div></div>
+            </div>
+
+            <div id="quiz-stage" class="quiz-stage"></div>
+
+            <div id="quiz-error" class="form-error" role="alert" hidden></div>
+
+            <div id="quiz-controls" class="quiz-controls" hidden>
+              <button class="button button-ghost" type="button" id="back-button">Back</button>
+              <button class="button button-primary" type="button" id="next-button">Next</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div>
+        <a class="brand footer-brand" href="#top">
+          <span class="brand-mark">✦</span>
+          <span>Horo</span>
+        </a>
+        <p>The astrology app for your pet’s chaotic little soul.</p>
+      </div>
+      <p class="footer-note">Entertainment only. Horo is not veterinary or behavioral advice.</p>
+    </footer>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
